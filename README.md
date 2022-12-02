@@ -297,13 +297,11 @@ Let’s add the association in the `Student` class now.
 Edit `Student` to add the `projects` field, along with getter and setter methods:
 
 ```java
-package org.example.models;
-
-import org.example.enums.StudentGroup;
+package org.example.model;
 
 import javax.persistence.*;
+import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 @Entity
@@ -315,8 +313,7 @@ public class Student {
 
     private String name;
 
-    @Temporal(TemporalType.DATE)
-    private Date dob;
+    private LocalDate dob;
 
     @Enumerated(EnumType.STRING)
     private StudentGroup studentGroup;
@@ -326,7 +323,7 @@ public class Student {
 
     @OneToMany(mappedBy = "student")
     private List<Project> projects = new ArrayList<>();
-
+    
     public void addProject(Project project) {
         projects.add(project);
     }
@@ -335,8 +332,7 @@ public class Student {
         return projects;
     }
 
-    // other getters, setters, and toString
-}
+    //other getters, setters, toString
 ```
 
 We are using the `@OneToMany` annotation here as one student can have many
@@ -526,8 +522,7 @@ public class Student {
 
     @OneToMany(mappedBy = "student")
     private List<Project> projects = new ArrayList<>();
-
-
+    
     public void addProject(Project project) {
         projects.add(project);
     }

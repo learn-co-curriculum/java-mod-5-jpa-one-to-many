@@ -3,17 +3,31 @@
 ## Learning Goals
 
 - Create one-to-many/many-to-one associations between entities with JPA convention.
+- Pick the entity on the "many" side as the relationship owner.
 - Modify a property of a join column.
+- Perform eager and lazy fetching of related data from the database.
+
+## Code Along
+
+We will continue with the `Student` and `IdCard` entities from the previous lessons.
 
 ## Introduction
 
-We will update the model to add an entity to represent a project that
-a student works on and submits for scoring. There’s a one-to-many
-relationship between the student and projects.
-Each student can have multiple projects and each project belongs to a specific
-student.
+Let's update the model to add a `Project` entity to represent a project that
+a student works on and submits for scoring.
+
+- Each project has an id, title, submission date, and score. A project is submitted by one student.
+
+We will implement the following one-to-many relationship between `Student` and `Project`
+(which can also be modeled as many-to-one between `Project` and `Student`):
 
 ![One to many relationship](https://curriculum-content.s3.amazonaws.com/6036/java-mod-5-jpa-1to1/student_project_erd.png)
+
+- A `Student` may be associated with many `Project` entities, while a `Project` is associated with one `Student`.
+- The `Project` entity will be chosen as the relationship owner since it is on the "many" side of the relationship.
+  This means a foreign key reference to the associated `Student` entity will be stored in the project database table.
+  - `Project` will use the `@ManyToOne` annotation to implement the relationship.
+  - `Student` will use the `@OneToMany` annotation with the `mappedBy` attribute to implement the relationship.
 
 ## Create Project Entity and Instances
 
@@ -80,7 +94,7 @@ The directory structure should look like this:
 
 
 1. Edit `persistence.xml` to set `hibernate.hbm2ddl.auto` to `create`.
-2. Edit the `JpaCreate` class to create three new projects  and save them in the
+2. Edit the `JpaCreate` class to create three new projects and save them in the
 database as shown below.
 
 ```java
@@ -191,28 +205,52 @@ Use **pgAdmin** to query the new `PROJECT` table:
 | 8   | 90    | 2022-07-25     | Saturn V Poster Presentation  |
 | 9   | 87    | 2022-07-30     | Mars Rover Presentation       |
 
-## Modeling the Relationship
+## Modeling the One-To-Many Relationship
 
-In a one-to-many relationship, we want to add the foreign key to the entity that
-is on the “many” side (`PROJECTS` in our case). If we were to add a foreign key
-on the `STUDENT_DATA` table, there would be multiple `project_id` columns and
-updates would require schema modification.
+A one-to-many relationship between `Student` and `Project` (one student
+creates many projects) can also be viewed as a many-to-one relationship
+between `Project` and `Student` (many projects are created by one student).
 
-![One to many relationship](https://curriculum-content.s3.amazonaws.com/6036/java-mod-5-jpa-1to1/student_project_erd.png)
+![One to many relationship project owning side](https://curriculum-content.s3.amazonaws.com/6036/java-mod-5-jpa/one_to_many_project_owning_side.png)
 
-We have to add annotations in both the `Student` and `Project` classes. First
-let’s modify the `Project` class so that the table has the associated student
-id. We are using the `@ManyToOne` annotation since multiple projects can belong
-to a single student.
+Here are the steps we have to follow to implement the one-to-many/many-to-one relationship with JPA:
 
-Initially we name the field `student`, which will cause
-the column in the `PROJECT` table to be named `student_id`.  Eventually we will
-set the property on the join column to name it `submitted_by`, thus matching the
-entity relationship model.
+- The entity on the "many" side is the owner of the relationship.
+- The table corresponding to the owning side will store the foreign key reference to the non-owning side entity.
+- The owning side Java class adds a new field with the annotation `@ManyToOne`.
+    - The field stores a single reference to the non-owning side entity.
+    - The `@JoinColumn` annotation is optional and can be used the change the foreign key column name in the database.  
+- The non-owning side Java class adds a new field with the annotation `@OneToMany`.
+    - The field stores a collection such as a set or list of references to entities on the owning side.
+    - The `mappedBy` property references the `@ManyToOne` field that was added to the owning side class.
+
+Let's go through the steps to implement the relationship between `Project` and `Student`.
+
+
+- The `Project` entity on the "many" side is the owner of the relationship.
+- The project database table will have a foreign key column to reference the student.
+- The `Project` class implements the owning side of the relationship
+  using a `@ManyToOne` annotation to reference the one associated `Student` object using a
+  new field named `student`.
+
+  ```java
+  @ManyToOne
+  private Student student;
+  ```
+  
+- The `Student` class implements the referencing or non-owning side
+  of the relationship using the `@OneToMany` annotation with a list of associated `Project` objects.
+  The `@OneToMany` annotation includes the `mappedBy` attribute mapped
+  by the `student` field in the `Project` class.   
+
+  ```java
+  @OneToMany(mappedBy = "student")
+  private List<Project> projects = new ArrayList<>();
+  ```
 
 Edit `Project` to add the `student` field,
 along with `getStudent`, `setStudent`, and `toString` methods.
-We are using the `@ManyToOne` annotation here as many different projects may be
+We are using the `@ManyToOne` annotation here as many projects may be
 associated with the same student, while a specific project is associated
 with only one student. 
 
@@ -287,14 +325,13 @@ public class Project {
                 ", title='" + title + '\'' +
                 ", submissionDate=" + submissionDate +
                 ", score=" + score +
-                ", student=" + student +
                 '}';
     }
 }
 ```
 
 Let’s add the association in the `Student` class now.
-Edit `Student` to add the `projects` field, along with getter and setter methods:
+Edit `Student` to add the `projects` field, along with `addProject` and `getProjects` methods:
 
 ```java
 package org.example.model;
@@ -305,7 +342,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "STUDENT_DATA")
 public class Student {
     @Id
     @GeneratedValue
@@ -323,9 +359,10 @@ public class Student {
 
     @OneToMany(mappedBy = "student")
     private List<Project> projects = new ArrayList<>();
-    
+
     public void addProject(Project project) {
         projects.add(project);
+        project.setStudent(this);  //set relation on owning side
     }
 
     public List<Project> getProjects() {
@@ -333,17 +370,22 @@ public class Student {
     }
 
     //other getters, setters, toString
+    ...
+}
 ```
 
 We are using the `@OneToMany` annotation here as one student can have many
-projects and using an `ArrayList` to track all the projects that belong to a
+projects. We use an `ArrayList` to track all the projects that belong to a
 specific `Student` instance. 
 
 The `mappedBy` property is telling JPA that the
 `projects` field in the `Student` class and the `student` field in the `Project`
-class are the same. The `Project` class owns the relationship since each project
-has a `student_id` column, thus the relationship will be stored in the `PROJECT`
-table in the database.
+class are the same relationship. 
+
+NOTE: Since `Project` is the owner of the relationship, the `addProject()` method
+calls `project.setStudent(this)` to ensure the owning side properly established the
+relationship.  We can also omit the `addProject()` method from `Student`, forcing the
+relationship to always be established through the owning entity `Project`.
 
 We will now define instance associations in the `JpaCreate` class by adding the
 following (place after the card associations):
@@ -353,14 +395,16 @@ following (place after the card associations):
 project1.setStudent(student1);
 project2.setStudent(student1);
 project3.setStudent(student2);
-
-student1.addProject(project1);
-student1.addProject(project2);
-student2.addProject(project3);
 ```
 
 Now if we run the `JpaCreate.main` method, it will add the data
-with the associations to the database.
+with the associations to the database.    
+
+Query the `PROJECT` table in the database.
+The foreign key column in the database table is assigned a default name of  `STUDENT_ID`,
+which is composed using the field name  `student` defined by the `@ManyToOne` annotation
+in the `Project` class, concatenated with the primary key `id` of the `Student` class.
+
 
 | ID   | SCORE  | SUBMISSIONDATE  | TITLE                        | STUDENT_ID   |
 |------|--------|-----------------|------------------------------|--------------|
@@ -371,23 +415,23 @@ with the associations to the database.
 Each project row can only store one integer value in the `STUDENT_ID` column,
 thus a project is associated with exactly one student.
 Notice however multiple project rows may
-store the same student id, thus a student may be associated with multiple projects.
+store the same student id, allowing a student to be associated with multiple projects.
 
-### Modifying Join Column
+## Join Column
 
-The `STUDENT_ID` column in the `PROJECT` table is called a join column since it
-is referring to a relationship in another table. We can use the `@JoinColumn`
-annotation to modify the column similar to the `@Column` annotation. For
-example, we can modify the column name by adding the following annotation and
-property to the `Student` class:
+We can use the `@JoinColumn` annotation to modify the foreign key column
+from the default name `student_id` to `submitted_by`.  
+
+Edit the `Project` class to add the `@JoinColumn` annotation as shown:
 
 ```java
 @ManyToOne
-@JoinColumn(name = "SUBMITTED_BY")
+@JoinColumn(name = "submitted_by")
 private Student student;
 ```
 
-If we run the `JpaCreate.main` method again, the `PROJECT` table will look like this:
+If we run the `JpaCreate.main` method again, the foreign key column in the `PROJECT` table
+is now named `SUBMITTED_BY`:
 
 | ID   | SCORE  | SUBMISSIONDATE  | TITLE                        | SUBMITTED_BY |
 |------|--------|-----------------|------------------------------|--------------|
@@ -451,7 +495,7 @@ Hibernate:
         student0_.name as name3_2_0_,
         student0_.studentGroup as studentg4_2_0_ 
     from
-        STUDENT_DATA student0_ 
+        Student student0_ 
     where
         student0_.id=?
 Student{id=1, name='Jack', dob=2000-01-01, studentGroup=ROSE}
@@ -467,44 +511,40 @@ Hibernate:
     from
         ID_CARD idcard0_ 
     left outer join
-        STUDENT_DATA student1_ 
+        Student student1_ 
             on idcard0_.id=student1_.card_id 
     where
         idcard0_.id=?
 IdCard{id=4, isActive=true}
 Hibernate: 
     select
-        projects0_.SUBMITTED_BY as submitte5_1_0_,
+        projects0_.submitted_by as submitte5_1_0_,
         projects0_.id as id1_1_0_,
         projects0_.id as id1_1_1_,
         projects0_.score as score2_1_1_,
-        projects0_.SUBMITTED_BY as submitte5_1_1_,
+        projects0_.submitted_by as submitte5_1_1_,
         projects0_.submissionDate as submissi3_1_1_,
         projects0_.title as title4_1_1_ 
     from
         Project projects0_ 
     where
-        projects0_.SUBMITTED_BY=?
-[Project{id=7, title='Ant Hill Diorama', submissionDate=2022-07-20, score=85, student=Student{id=1, name='Jack', dob=2000-01-01, studentGroup=ROSE}}, Project{id=8, title='Saturn V Poster Presentation', submissionDate=2022-07-25, score=90, student=Student{id=1, name='Jack', dob=2000-01-01, studentGroup=ROSE}}]
+        projects0_.submitted_by=?
+[Project{id=7, title='Ant Hill Diorama', submissionDate=2022-07-20, score=85}, Project{id=8, title='Saturn V Poster Presentation', submissionDate=2022-07-25, score=90}]
 ```
 
 ## Code Check
 
-Since we have modified and worked on different files, here are the final
+Since we modified and worked on different files, here are the final
 versions of `Student`, `Project`, `JpaCreate`, and `JpaRead` for reference.
 
 ### Student.java
 
 ```java
-package org.example.model;
-
-import javax.persistence.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "STUDENT_DATA")
 public class Student {
     @Id
     @GeneratedValue
@@ -522,9 +562,10 @@ public class Student {
 
     @OneToMany(mappedBy = "student")
     private List<Project> projects = new ArrayList<>();
-    
+
     public void addProject(Project project) {
         projects.add(project);
+        project.setStudent(this);
     }
 
     public List<Project> getProjects() {
@@ -604,7 +645,7 @@ public class Project {
     private int score;
 
     @ManyToOne
-    @JoinColumn(name = "SUBMITTED_BY")
+    @JoinColumn(name = "submitted_by")
     private Student student;
 
     public int getId() {
@@ -653,8 +694,7 @@ public class Project {
                 "id=" + id +
                 ", title='" + title + '\'' +
                 ", submissionDate=" + submissionDate +
-                ", score=" + score +
-                ", student=" + student +
+                ", score=" + score
                 '}';
     }
 }
@@ -729,10 +769,6 @@ public class JpaCreate {
         project1.setStudent(student1);
         project2.setStudent(student1);
         project3.setStudent(student2);
-
-        student1.addProject(project1);
-        student1.addProject(project2);
-        student2.addProject(project3);
 
         // create EntityManager
         EntityManagerFactory entityManagerFactory = Persistence.createEntityManagerFactory("example");
@@ -809,6 +845,20 @@ public class JpaRead {
 We have learned how to create one-to-many associations and how to keep the
 relationships in sync in the program by creating a list of related entities.
 
+
+To implement a one-to-many/many-to-one relationship:
+
+- The entity on the "many" side of the relationship is the owner.
+- The table corresponding to the owning side will store the foreign key reference.
+- The owning side Java class adds a new field with the annotation `@ManyToOne`.
+   - The field stores a single reference to non-owning side entity.
+- The non-owning side Java class adds a new field with the annotation `@OneToMany`.
+   - The field stores a collection of references to owning side entities.
+   - The `mappedBy` property references the `@ManyToOne` field that was added to the owning side class.
+
+
+![One to many relationship project owning side](https://curriculum-content.s3.amazonaws.com/6036/java-mod-5-jpa/one_to_many_project_owning_side.png)
+
 A project is associated with exactly one student, thus the `Project` class stores
 the relationship as:
 
@@ -817,7 +867,7 @@ public class Project {
     ...
     
     @ManyToOne
-    @JoinColumn(name = "SUBMITTED_BY")
+    @JoinColumn(name = "submitted_by")
     private Student student;
     
     ...
